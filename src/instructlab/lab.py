@@ -828,6 +828,16 @@ TORCH_DEVICE = TorchDeviceParam()
         "(reduces GPU VRAM usage and may slow down training)"
     ),
 )
+@click.option(
+    "--override-training-args",
+    default="{}",
+    show_default=True,
+    #hidden=True,
+    help=(
+        "Additional arguments for training (json string)"
+        "e.g. '--override-training-args {\"gradient_accumulation_steps\"=8}'"
+    ),
+)
 @click.pass_context
 def train(
     ctx,
@@ -843,6 +853,7 @@ def train(
     num_epochs,
     device: "torch.device",
     four_bit_quant: bool,
+    override_training_args: str,
 ):
     """
     Takes synthetic data generated locally with `ilab generate` and the previous model and learns a new model using the MLX API.
@@ -855,6 +866,11 @@ def train(
 
     if four_bit_quant and device.type != "cuda":
         ctx.fail("--4-bit-quant option requires --device=cuda")
+
+    try:
+        override_training_args_dict = json.loads(override_training_args)
+    except json.decoder.JSONDecodeError as e:
+        ctx.fail("Parsing override trainign args: "+ str(e))
 
     # NOTE: If given a data_dir, input-dir is ignored in favor of existing!
     if data_dir is None:
@@ -905,6 +921,7 @@ def train(
             num_epochs=num_epochs,
             device=device,
             four_bit_quant=four_bit_quant,
+            override_training_args=override_training_args_dict,
         )
 
         training_results_dir = "./training_results"

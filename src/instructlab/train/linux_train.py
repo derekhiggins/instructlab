@@ -2,6 +2,7 @@
 
 # Standard
 from typing import Optional
+import json
 
 # Third Party
 from datasets import load_dataset
@@ -107,6 +108,7 @@ def linux_train(
     num_epochs: Optional[int] = None,
     device: torch.device = torch.device("cpu"),
     four_bit_quant: bool = False,
+    override_training_args: dict = {},
 ):
     """Lab Train for Linux!"""
     print("LINUX_TRAIN.PY: NUM EPOCHS IS: ", num_epochs)
@@ -237,16 +239,22 @@ def linux_train(
     output_dir = "./training_results"
     per_device_train_batch_size = 1
 
+
+    training_args = {}
+    training_args["per_device_train_batch_size"] = per_device_train_batch_size
+    training_args["fp16"] = use_fp16
+    training_args["bf16"] = not use_fp16
+    training_args["save_strategy"] = "epoch"
+    training_args["report_to"] =  "none"
+
+    training_args.update(override_training_args)
+
     training_arguments = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=num_epochs,
-        per_device_train_batch_size=per_device_train_batch_size,
-        fp16=use_fp16,
-        bf16=not use_fp16,
         # use_ipex=True, # TODO CPU test this possible optimization
         use_cpu=model.device.type == "cpu",
-        save_strategy="epoch",
-        report_to="none",
+        **training_args
         # options to reduce GPU memory usage and improve performance
         # https://huggingface.co/docs/transformers/perf_train_gpu_one
         # https://stackoverflow.com/a/75793317
