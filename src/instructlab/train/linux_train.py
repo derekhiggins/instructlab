@@ -241,8 +241,8 @@ def linux_train(
         output_dir=output_dir,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=per_device_train_batch_size,
-        fp16=use_fp16,
-        bf16=not use_fp16,
+        fp16=False,
+        bf16=False,
         # use_ipex=True, # TODO CPU test this possible optimization
         use_cpu=model.device.type == "cpu",
         save_strategy="epoch",
@@ -252,8 +252,8 @@ def linux_train(
         # https://stackoverflow.com/a/75793317
         # torch_compile=True,
         # fp16=False,  # fp16 increases memory consumption 1.5x
-        # gradient_accumulation_steps=8,
-        # gradient_checkpointing=True,
+        gradient_accumulation_steps=8,
+        gradient_checkpointing=True,
         # eval_accumulation_steps=1,
         # per_device_eval_batch_size=1,
     )
