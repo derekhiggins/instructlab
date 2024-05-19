@@ -15,7 +15,7 @@ import typing
 
 # Third Party
 from click_didyoumean import DYMGroup
-from git import GitError, Repo
+from git import GitError, Repo, NULL_TREE
 from huggingface_hub import hf_hub_download, list_repo_files
 from huggingface_hub import logging as hf_logging
 from huggingface_hub import snapshot_download
@@ -1355,3 +1355,92 @@ def sysinfo():
     """Print system information"""
     for key, value in get_sysinfo().items():
         print(f"{key}: {value}")
+
+@cli.command()
+@click.option(
+    "--repository",
+    default=config.DEFAULT_TAXONOMY_REPO,
+    show_default=True,
+    help="Taxonomy repository location.",
+)
+@click.option(
+    "--start-commit",
+    "-s",
+    help="Commit to start building a cache from, defaults to the initial commit",
+    default=None,
+    show_default=True,
+)
+def cache(repository, start_commit):
+    if not os.path.exists(config.DEFAULT_CACHE_FILES_TMP):
+        repo = Repo.clone_from(repository, config.DEFAULT_CACHE_FILES_TMP)
+    else:
+        repo = Repo(config.DEFAULT_CACHE_FILES_TMP)
+    repo.remotes.origin.fetch()
+
+    logger = logging.getLogger(__name__)
+
+    current_file = os.path.join(config.DEFAULT_CACHE_FILES_DIR, "current")
+    os.makedirs(config.DEFAULT_CACHE_FILES_DIR, exist_ok=True)
+    if not start_commit and os.path.exists(current_file):
+        with open(current_file) as fp:
+            start_commit = fp.read().strip()
+
+    commit = repo.commit("origin/main")
+    commits = []
+    found = False
+    while True:
+        if commit.hexsha == start_commit:
+            found = True
+            break
+        commits.insert(0, commit)
+        if commit.parents:
+            commit = commit.parents[0]
+        else:
+            break
+
+    if start_commit != None and found == False:
+        raise click.ClickException(str(f"Couldn't find start commit: {start_commit}"))
+
+    for commit in commits:
+        parent = NULL_TREE
+        if commit.parents:
+            parent = commit.parents[0]
+        modified_files = [
+            d.b_path
+            for d in commit.diff(parent, R=True)
+            if not d.deleted_file and utils.istaxonomyfile(d.b_path)
+        ]
+
+        if modified_files:
+            repo.git.reset('--hard', commit)
+
+        cache_dir = os.path.join(config.DEFAULT_CACHE_FILES_DIR, commit.hexsha[:2], commit.hexsha[2:4], commit.hexsha[4:])
+        for modified_file in modified_files:
+            with open(os.path.join(config.DEFAULT_CACHE_FILES_TMP, modified_file), "r", encoding="utf-8") as file:
+                contents = yaml.safe_load(file)
+                try:
+                    documents = contents.get("document")
+                except:
+                    documents = None
+                if documents:
+                    cache_dir_qna = os.path.join(cache_dir, modified_file)
+                    os.makedirs(os.path.dirname(cache_dir_qna), exist_ok=True)
+
+                    reference = {"document":documents}
+                    reference["status"] = "ok"
+                    reference["files"] = []
+                    try:
+                        taxonomy_documents = utils.get_documents(source=documents, logger=logger)
+                        for i, taxonomy_document in enumerate(taxonomy_documents):
+                            reference["files"].append({"path":taxonomy_document[0], "cachefile":f"{i}.md"})
+                            with open(os.path.join(os.path.dirname(cache_dir_qna), f"{i}.md"), "w") as fp:
+                                fp.write(taxonomy_document[1])
+                    except Exception as e:
+                        taxonomy_documents = []
+                        reference["status"] = "err"
+                        print(e)
+                    with open(cache_dir_qna, "w") as fp:
+                        yaml.dump(reference, fp, default_flow_style=False, sort_keys=False)
+
+            with open(current_file, "w") as fp:
+                fp.write(commit.hexsha)

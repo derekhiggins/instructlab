@@ -221,8 +221,7 @@ def get_documents(
                 for file_path in glob.glob(os.path.join(repo.working_dir, pattern)):
                     if os.path.isfile(file_path) and file_path.endswith(".md"):
                         with open(file_path, "r", encoding="utf-8") as file:
-                            file_contents.append(file.read())
-
+                            file_contents.append((file_path.replace(repo.working_dir+"/", ""), file.read(),))
             if file_contents:
                 return file_contents
             raise SystemExit("Couldn't find knowledge documents")
